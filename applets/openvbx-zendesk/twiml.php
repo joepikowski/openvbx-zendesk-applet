@@ -60,15 +60,51 @@ $phone = str_replace('+', '', $phone);
 $response = curlWrap("/search.json", array("query" => "type:user phone:" . $phone), "GET");
 
 if($response['count'] == 0){
-  //create a new user
-  $response = curlWrap("/users.json", json_encode(array("user" => array("name"=>"Unknown Phone#: " . $phone, "phone"=>$phone))), "POST"); 
-  //create a new ticket in the new user's name
-  $response = curlWrap("/tickets.json", json_encode(array("ticket"=> array("subject" => "New Phone Call From " . $phone, "comment" => array("body" => "call made at " . date('r')), "requester_id" => $response['user']['id']))), "POST");
-}else if($response['count'] == 1){
-  //create a new ticket in the name of the current user
-  $response = curlWrap("/tickets.json", json_encode(array("ticket"=> array("subject" => "New Phone Call From " . $phone . " at " . date('r'), "comment" => array("body" => "Call came in at " . date('r')), "requester_id" => $response['results'][0]['id']))), "POST");
-}
+    //create a new user
+    $response = curlWrap("/users.json", json_encode(array("user" => array("name"=>"Anonymous Caller | " . $phone, "phone"=> $phone))), "POST");
 
+    //create a new ticket in the new user's name
+    $response = curlWrap("/tickets.json", json_encode(array(
+                "ticket"=> array(
+                        "subject" => "New Phone Call From " . $phone,
+                        "comment" => array(
+                                "body" => "Call made at " . date('r')
+                            ),
+                        "requester_id" => $response['user']['id']
+                        )
+                )), "POST");
+}else if ($response['count'] > 0){
+    function filterAnon($elem){
+        $bool = (strpos($elem['name'],"Unknown") === false && strpos($elem['name'],"Anonymous") === false);
+        return $bool;
+    }
+    //filter out unknown and anonymous users
+    $known = array_values(array_filter($response['results'],'filterAnon'));
+
+    if (sizeof($known) > 0){
+        //new ticket with known user as requestor
+        $knownUser = $known[0];
+        $response = curlWrap("/tickets.json",json_encode(array(
+                "ticket"=> array(
+                        "subject" => "New Phone Call From " . $knownUser['name'] . " | " . $phone,
+                        "comment" => array(
+                                "body" => "Call came in at " . date('r')),
+                        "requester_id" => $knownUser['id']
+                        )
+                )),"POST");
+    }else{
+        //new ticket with existing unknown user as requestor
+        $response = curlWrap("/tickets.json",json_encode(array(
+                "ticket"=> array(
+                        "subject" => "New Phone Call From " . $phone,
+                        "comment" => array(
+                                "body" => "Call came in at " . date('r')
+                                ),
+                        "requester_id" => $response['results'][0]['id']
+                        )
+                )),"POST");
+    }
+}
 
 // openvbx code below
 // $primary is getting the url created by what ever applet was put 
